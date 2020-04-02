@@ -3,10 +3,11 @@
 Andrew Chin
 ```
 TODO:
-- add introduction material (merge ppt)
-- finish optimization discussion
-- finish RTL discussion
-- change bullet points into text
+- fix TODOs
+- instrumentation experiments
+- evaluate memory usage
+- evaluate realistic minikube workload
+- write thesis
 ```
 
 ## A Deep Dive Into the Go Compiler Codebase
@@ -23,6 +24,25 @@ In order to follow along, the reader should have the following source code:
  In the rest of this document, we will refer to relative file paths within `llvm` and `go`. These refer to the directories you have just downloaded.
 
 ---
+
+#### Race Conditions vs. Data Races
+
+According to  https://dl.acm.org/doi/10.1145/130616.130623:
+
+- "Two fundamentally different types of races, that capture different kinds
+of bugs in different classes of parallel programs, can occur.
+	- **General races** cause nondeterministic execution and are failures in programs intended
+to be deterministic.
+ 	- **Data races** cause nonatomic execution of critical
+sections and are failures in (nondeterministic) programs that access and
+update shared data in critical sections."
+
+
+According to the C++11 Standard, chapter intro.multithread, paragraph 21 (https://github.com/google/sanitizers/wiki/ThreadSanitizerAboutRaces#Volatile):
+
+- "The execution of a program contains a data race if it contains two conflicting actions in different threads, at least one of which is not atomic, and neither happens before the other. Any such data race results in undefined behavior."
+
+
 
 #### Go Compiler
 
@@ -75,16 +95,6 @@ What is implemented in the Go runtime then?
 
 ---
 
-#### Emitting Instrumented ASM for Race Detection
-
-- Clang: `clang -S -masm=intel -fsanitize=thread <source>.go` outputs `<source>.s`
-
-- Go Compiler: `go tool compile -S -race <source>.go > <source>.s` outputs `<source>.s`
-
-   - to view SSA, prepend above with `GOSSAFUNC=<func_name>`. This will generate `ssa.html`, which provides an interactive look at each phase in compilation from source code to AST to SSA after each optimization pass.
-
----
-
 #### Source Code: LLVM
 
 - The source code for race detection in LLVM is well compartmentalized.
@@ -94,6 +104,10 @@ What is implemented in the Go runtime then?
 	- `racefuncentry`/`racefuncexit`: inserted at the beginning and end (respectively) of functions containing instrumented memory accesses
    		- used to restore stack traces
 
+	- `raceread`/`racereadrange`
+
+	- `racewrite`/`racewriterange`
+
 	- TODO
 
 - LLVM instrumentation: `llvm/lib/Transforms/Instrumentation/`
@@ -102,17 +116,18 @@ What is implemented in the Go runtime then?
 
 		```
 		Summary:
-			1. Redundant accesses currently handled:
-				- read-before-write (within same BB, no calls between)
-				- not captured variables
 
-			2. Patterns that should not survive after classic compiler optimizations are not handled:
-				- two reads from the same temp should be eliminated by CSE (common subexpression elimination)
-				- two writes should be eliminated by DSE (dead store elimination)
-				- etc. (out-of-scope for this project)
+		1. Redundant accesses currently handled:
+			- read-before-write (within same BB, no calls between)
+			- not captured variables
 
-			3. Do not instrument known races/"benign races" that come from compiler instrumentation.
-				The user has no way of suppressing them.
+		2. Patterns that should not survive after classic compiler optimizations are not handled:
+			- two reads from the same temp should be eliminated by CSE (common subexpression elimination)
+			- two writes should be eliminated by DSE (dead store elimination)
+			- etc. (out-of-scope for this project)
+
+		3. Do not instrument known races/"benign races" that come from compiler instrumentation.
+			The user has no way of suppressing them.
 		```
 
 		<details>
@@ -1188,16 +1203,13 @@ racecallatomic_ignore:
 
 ---
 
-#### Instrumentation in LLVM Clang vs. in Go
-
-
-
----
-
 #### Optimizations
 
-TODO - what cases are covered by classic opts, what are covered by explicit handling, which are not handled?
+The following is a list of SSA optimization passes performed by the Go compiler, in order of execution.
+
 ```
+SOURCE: go/src/cmd/compile/internal/ssa/compile.go
+
 - number lines
 
 - early phielim
@@ -1304,6 +1316,33 @@ TODO - what cases are covered by classic opts, what are covered by explicit hand
 
 Created and compiled small toy programs with race instrumentation to further understand Go race instrumentation.
 
+Useful documentation about the Go compiler (for full documentation see https://golang.org/cmd/compile/)
+
+```
+-N
+	Disable optimizations.
+-S
+	Print assembly listing to standard output (code only).
+-S -S
+	Print assembly listing to standard output (code and data).
+-l
+	Disable inlining.
+-m
+	Print optimization decisions.
+-race
+	Compile with race detector enabled.
+```
+
+- Emitting Instrumented ASM for Race Detection:
+
+	- Clang: `clang -S -masm=intel -fsanitize=thread <source>.go` outputs `<source>.s`
+
+	- Go Compiler: `go tool compile -S -race <source>.go > <source>.s` outputs `<source>.s`
+
+   		- to view SSA, prepend above with `GOSSAFUNC=<func_name>`. This will generate `ssa.html`, which provides an interactive look at each phase in compilation from source code to AST to SSA after each optimization pass.
+
+---
+
 #### Stack Variables
 
 #### Mutexes
@@ -1317,6 +1356,20 @@ Created and compiled small toy programs with race instrumentation to further und
 Read-before-write within same basic block, with no calls in-between.
 
 #### Not Captured Variables
+
+---
+
+## Discussion
+
+#### Instrumentation in LLVM Clang vs. in Go
+
+They are almost identical in terms of optimizations. This makes sense because the Go Race Detector can be considered a port of TSAN to Go. It is also maintained by the same key individuals as TSAN.
+
+#### Room for Improvement?
+
+Variables that do not escape function
+
+---
 
 ## Kubernetes
 
