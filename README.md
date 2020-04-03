@@ -1,14 +1,6 @@
 # Understanding and Evaluating Dynamic Race Detection with Go
 
 Andrew Chin
-```
-TODO:
-- fix TODOs
-- instrumentation experiments
-- evaluate memory usage
-- evaluate realistic minikube workload
-- write thesis
-```
 
 ## A Deep Dive Into the Go Compiler Codebase
 
@@ -64,7 +56,6 @@ The heart of the compiler is located at `go/src/cmd/compile/internal/gc/main.go`
 
 #### TSAN (ThreadSanitizer)
 
-`OUT OF SCOPE FOR THIS THESIS?`
 - Should understand current approaches to race detection using static and dynamic analysis
 - Concepts: shadow memory, **happens-before**, **vector clocks**
 
@@ -108,7 +99,7 @@ What is implemented in the Go runtime then?
 
 	- `racewrite`/`racewriterange`
 
-	- TODO
+	- ...
 
 - LLVM instrumentation: `llvm/lib/Transforms/Instrumentation/`
 
@@ -1312,9 +1303,7 @@ SOURCE: go/src/cmd/compile/internal/ssa/compile.go
 
 ---
 
-## Experiments
-
-Created and compiled small toy programs with race instrumentation to further understand Go race instrumentation.
+## Using Compiler Tools
 
 Useful documentation about the Go compiler (for full documentation see https://golang.org/cmd/compile/)
 
@@ -1343,38 +1332,8 @@ Useful documentation about the Go compiler (for full documentation see https://g
 
 ---
 
-#### Stack Variables
-
-#### Mutexes
-
-#### Atomics
-
-#### Escaped Stack Variables
-
-#### Read-before-write
-
-Read-before-write within same basic block, with no calls in-between.
-
-#### Not Captured Variables
-
----
-
 ## Discussion
 
 #### Instrumentation in LLVM Clang vs. in Go
 
-They are almost identical in terms of optimizations. This makes sense because the Go Race Detector can be considered a port of TSAN to Go. It is also maintained by the same key individuals as TSAN.
-
-#### Room for Improvement?
-
-Variables that do not escape function
-
----
-
-## Kubernetes
-
-TODO
-
-## Evaluating Minikube
-
-TODO
+They are almost identical in terms of optimizations. This makes sense because the Go Race Detector is a port of TSAN to Go. It is also maintained by the same key individuals as TSAN. However, the Go race detector does not yet optimize for removing instrumentation of uncaptured pointers (https://github.com/golang/go/issues/19054#issuecomment-279327160). Uncaptured pointers are guaranteed to be safe as they will not escape the current function. In this case, capturing a pointer means that no part of the value will be returned from the function nor stored in memory elsewhere.
